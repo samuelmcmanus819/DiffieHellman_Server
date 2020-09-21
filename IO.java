@@ -20,8 +20,6 @@ public class IO {
         String[] UserCreds;
         while((FileLine = FileReader.readLine())!= null){
             UserCreds = FileLine.split(", ");
-            System.out.println(FileLine);
-            System.out.println(UserCreds[0]);
             if(UserCreds[0].equalsIgnoreCase(Username)) {
                 FileReader.close();
                 return true;
@@ -50,7 +48,6 @@ public class IO {
         String[] UserCreds;
         while((FileLine = FileReader.readLine())!= null){
             UserCreds = FileLine.split(", ");
-            System.out.println(UserCreds[0]);
             if(UserCreds[0].equalsIgnoreCase(Username)) {
                 FileReader.close();
                 return UserCreds;

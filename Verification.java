@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.spec.InvalidKeySpecException;
+import java.util.Base64;
 
 public class Verification {
     /*
@@ -11,7 +12,7 @@ public class Verification {
     Purpose: Registers a new user
     Author: Samuel McManus
     Return: Whether the registration was successful or not
-    Uses: SearchForUser
+    Uses: SearchForUser, WriteNewUser
     Used By: Listen
     Date: September 15, 2020
      */
@@ -25,27 +26,34 @@ public class Verification {
             byte[] Salt = CreateSalt();
             //Hash the password with the computed salt.
             String PasswordHash = HashPassword(Password, Salt);
-            IO.WriteNewUser(Username, PasswordHash, new String(Salt));
+            IO.WriteNewUser(Username, PasswordHash, Base64.getEncoder().encodeToString(Salt));
             return true;
         }
     }
-    static boolean Login(String Username, String Password) throws IOException {
+    /*
+    Name: Login
+    Purpose: Logs a user in
+    Author: Samuel McManus
+    Return: Whether the log in was successful or not
+    Uses: GetUser, WriteNewUser, HashPassword
+    Used By: Listen
+    Date: September 15, 2020
+     */
+    static boolean Login(String Username, String Password) throws IOException, InvalidKeySpecException, NoSuchAlgorithmException {
         String[] UserCreds = IO.GetUser(Username);
-        if(UserCreds[0].equals("")){
-            return false;
+        if(!UserCreds[0].equals("") &&
+                (HashPassword(Password, Base64.getDecoder().decode(UserCreds[2])).equals(UserCreds[1]))){
+               return true;
         }
-        else{
-            System.out.println("a");
-            return true;
-        }
+        return false;
     }
     /*
     Name: HashPassword
     Parameter Password: The user's plaintext password
     Purpose: Hashes the user's password
     Author: Samuel McManus
-    Uses: CreateSalt, BytesToHex
-    Used By: Main
+    Uses: N/A
+    Used By: Login, Register
     Date: September 14, 2020
      */
     static String HashPassword(String Password, byte[]Salt) throws NoSuchAlgorithmException, InvalidKeySpecException {
@@ -57,22 +65,14 @@ public class Verification {
         SecretKeyFactory Factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA512");
         //Gets an encoded secret key from the factory as a hash
         byte[] HashBytes = Factory.generateSecret(Spec).getEncoded();
-
-        //Creates a stringbuilder object
-        StringBuilder HashBuilder = new StringBuilder();
-        //Loops through the bytes in the byte array and converts each of them to hexadecimal
-        //and appends to the stringbuilder
-        for (int i = 0; i < HashBytes.length; i++) {
-            HashBuilder.append(String.format("%02x", HashBytes[i]));
-        }
-        return HashBuilder.toString();
+        return Base64.getEncoder().encodeToString(HashBytes);
     }
     /*
     Name: CreateSalt
     Purpose: Creates a salt for a new user's password
     Author: Samuel McManus
     Uses: N/A
-    Used By: HashPassword
+    Used By: Register
     Date: September 14, 2020
      */
     static byte[] CreateSalt(){

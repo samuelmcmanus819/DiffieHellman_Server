@@ -1,7 +1,9 @@
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.SecretKey;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.security.NoSuchAlgorithmException;
+import java.security.*;
 import java.security.spec.InvalidKeySpecException;
 
 public class Networking{
@@ -9,7 +11,7 @@ public class Networking{
     Name: Listen
     Purpose: Listens for connecting users
     Author: Samuel McManus
-    Uses: N/A
+    Uses: Verification.Register, Verification.Login
     Used By: Main
     Date: September 14, 2020
      */
@@ -28,74 +30,57 @@ public class Networking{
                 //auto-flushes (automatically sends data back)
                 ObjectOutputStream Output = new ObjectOutputStream(
                         IO.getOutputStream());
-                //Continues until an event triggers finished to equal true
-                boolean finished = false;
                 //Clears out the initial garbage stored in the output of the client socket
                 Input.readObject();
 
-                //Takes user credentials
-                String UserInput = (String)Input.readObject();
-                String[] UserCredentials = UserInput.split(", ");
-                //Registers a new user
-                if(UserCredentials[2].trim().equalsIgnoreCase("New")) {
-                    //If the following returns false, then the username is unavailable
-                    if (!Verification.Register(UserCredentials[0], UserCredentials[1])) {
-                        Output.writeObject("Username not available\n");
-                    } else {
-                        Output.writeObject("Success! Next please log in\n");
-                    }
-                    Output.flush();
-                }
-                //Logs a user in
-                else {
-                    if(!Verification.Login(UserCredentials[0], UserCredentials[1])){
-                        Output.writeObject("Invalid username or password");
-                        Output.flush();
-                    }
-                }
-
-                while (!finished) {
-                    /*
-                    EVERYTHING HERE IS TEMPRORARY
-                    all this does is echo what the user entered in the terminal
-                     */
-                    UserInput = (String)Input.readObject();
-                    if (UserInput.equals(""))
-                        finished = true;
-                    else {
-                        System.out.println(UserInput);
-                    }
+                //If the user successfully verified their account, then start the rest of the program
+                if(VerifyUser(Input, Output)){
+                    //Generate a secret session key using Diffie-Hellman
+                    byte[] SessionKey = Cryptography.DiffieHellman(Input, Output);
+                    //Hash the session key to make it a reasonable size
+                    byte[] SmallSessionKey = Cryptography.SHA1Hash(SessionKey);
+                    SecretKey DESKey = Cryptography.DESKeyGen(SmallSessionKey);
                 }
                 //Close the reader, writer, and socket.
                 Input.close();
                 Output.close();
                 IO.close();
             }
-        } catch (IOException e) {
-            System.out.println(e.getMessage());
-        } catch (InvalidKeySpecException e) {
-            e.printStackTrace();
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
-        } catch (ClassNotFoundException e) {
+        } catch (IOException | ClassNotFoundException | InvalidKeySpecException | NoSuchAlgorithmException | InvalidAlgorithmParameterException | InvalidKeyException e) {
             e.printStackTrace();
         }
     }
-    /*
-    Name: GetInput
-    Purpose: Gets the client's input without the random nonsense
-             added by the socket
-    Author: Samuel McManus
-    Return: The user's scrubbed input
-    Uses: Listen
-    Used By: Main
-    Date: September 15, 2020
-     */
-    /*
-    static String GetInput(ObjectInputStream Input) throws IOException, ClassNotFoundException {
+    static boolean VerifyUser(ObjectInputStream Input, ObjectOutputStream Output) throws IOException, ClassNotFoundException, InvalidKeySpecException, NoSuchAlgorithmException {
+        //Takes user credentials
         String UserInput = (String)Input.readObject();
-        return UserInput;
-        //return UserInput.substring(3);
+        String[] UserCredentials = UserInput.split(", ");
+        //Registers a new user
+        if(UserCredentials[2].trim().equalsIgnoreCase("New")) {
+            //If the following returns false, then the username is unavailable
+            if (!Verification.Register(UserCredentials[0], UserCredentials[1])) {
+                Output.writeObject("Username not available\n");
+            } else {
+                Output.writeObject("Success! Next please log in\n");
+            }
+            Output.flush();
+            return false;
+        }
+        //Logs a user in
+        else {
+            //If the user's input credentials don't match the actuals, tell the user
+            //they messed up and return false
+            if(!Verification.Login(UserCredentials[0], UserCredentials[1])){
+                Output.writeObject("Invalid username or password");
+                Output.flush();
+                return false;
+            }
+            //If the user's input credentials match the actuals, tell the user
+            //they succeeded and return true
+            else{
+                Output.writeObject("Success!");
+                Output.flush();
+                return true;
+            }
+        }
     }
-    */
 }
