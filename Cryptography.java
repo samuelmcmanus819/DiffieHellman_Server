@@ -1,5 +1,6 @@
 import javax.crypto.*;
 import javax.crypto.spec.DESKeySpec;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -62,7 +63,7 @@ public class Cryptography {
         return SecretKeyAgreement.generateSecret();
     }
     /*
-    Name: DiffieHellman
+    Name: SHA1Hash
     Purpose: Hash a byte array using the sha-1 algorithm
     Author: Doctor Burris and Samuel McManus
     Parameter DHBytes: The session key received from the diffie-hellman algorithm
@@ -78,6 +79,16 @@ public class Cryptography {
         Sha.update(DHBytes);
         return Sha.digest();
     }
+    /*
+    Name: DESKeyGen
+    Purpose: Generate a DES key using the session key as the password
+    Author: Doctor Burris
+    Parameter Parameter: A hash of the session key received from the diffie-hellman algorithm
+    Return: The secret DES key
+    Uses: N/A
+    Used By: DESEncrypt
+    Date: September 18, 2020
+     */
     public static SecretKey DESKeyGen(byte[] Password) throws InvalidKeyException,
             NoSuchAlgorithmException, InvalidKeySpecException {
         //Create a key specification from the password
@@ -85,5 +96,45 @@ public class Cryptography {
         //Get an instance of the DES algorithm and return the secret key made from it
         SecretKeyFactory KeyFactory = SecretKeyFactory.getInstance("DES");
         return KeyFactory.generateSecret(desKeySpec);
+    }
+    public static void DESEncrypt(byte[] SessionBytes, ObjectOutputStream Output) throws NoSuchPaddingException,
+            NoSuchAlgorithmException, InvalidKeyException, InvalidKeySpecException, IOException,
+            BadPaddingException, IllegalBlockSizeException {
+        //Initializes a file input stream
+        FileInputStream fin = new FileInputStream("ServerFile.txt");
+        //Gets a DES secret key
+        SecretKey DESKey = DESKeyGen(SessionBytes);
+        //Gets an instance of the cipher class using the DES algorithm  in encrypt mode
+        Cipher des = Cipher.getInstance("DES/CBC/PKCS5Padding");
+        des.init(Cipher.ENCRYPT_MODE, DESKey);
+        //Writes out the initialization vector and the length of the initialization vector
+        byte[] iv = des.getIV();
+        Output.writeObject(iv.length);
+        Output.flush();
+        Output.writeObject(iv);
+        Output.flush();
+
+        //Writes in 128 byte blocks
+        byte[] Input = new byte[128];
+        //Infinitely loops reading 128 bytes from the file, encrypting those bytes,
+        //and writing them to the output stream
+        while(true){
+            int BytesRead = fin.read(Input);
+            if(BytesRead == -1)
+                break;
+            byte[] OutputBytes = des.update(Input, 0, BytesRead);
+            if(OutputBytes != null) {
+                System.out.print(Base64.getEncoder().encodeToString(OutputBytes));
+                Output.writeObject(OutputBytes);
+            }
+        }
+        //Write the final bytes to the output stream and close the file.
+        byte[] OutputBytes = des.doFinal();
+        if(OutputBytes != null) {
+            System.out.println(Base64.getEncoder().encodeToString(OutputBytes));
+            Output.writeObject(OutputBytes);
+        }
+        fin.close();
+        Output.flush();
     }
 }

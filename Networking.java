@@ -1,3 +1,5 @@
+import javax.crypto.BadPaddingException;
+import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import java.io.*;
@@ -5,6 +7,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.security.*;
 import java.security.spec.InvalidKeySpecException;
+import java.util.Base64;
 
 public class Networking{
     /*
@@ -39,18 +42,21 @@ public class Networking{
                     byte[] SessionKey = Cryptography.DiffieHellman(Input, Output);
                     //Hash the session key to make it a reasonable size
                     byte[] SmallSessionKey = Cryptography.SHA1Hash(SessionKey);
-                    SecretKey DESKey = Cryptography.DESKeyGen(SmallSessionKey);
+                    Cryptography.DESEncrypt(SmallSessionKey, Output);
                 }
                 //Close the reader, writer, and socket.
                 Input.close();
                 Output.close();
                 IO.close();
             }
-        } catch (IOException | ClassNotFoundException | InvalidKeySpecException | NoSuchAlgorithmException | InvalidAlgorithmParameterException | InvalidKeyException e) {
+        } catch (IOException | ClassNotFoundException | InvalidKeySpecException |
+                NoSuchAlgorithmException | InvalidAlgorithmParameterException | InvalidKeyException |
+                NoSuchPaddingException | IllegalBlockSizeException | BadPaddingException e) {
             e.printStackTrace();
         }
     }
-    static boolean VerifyUser(ObjectInputStream Input, ObjectOutputStream Output) throws IOException, ClassNotFoundException, InvalidKeySpecException, NoSuchAlgorithmException {
+    static boolean VerifyUser(ObjectInputStream Input, ObjectOutputStream Output) throws IOException,
+            ClassNotFoundException, InvalidKeySpecException, NoSuchAlgorithmException {
         //Takes user credentials
         String UserInput = (String)Input.readObject();
         String[] UserCredentials = UserInput.split(", ");
