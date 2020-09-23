@@ -1,12 +1,12 @@
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
-import javax.crypto.SecretKey;
+import javax.crypto.*;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.security.*;
 import java.security.spec.InvalidKeySpecException;
+import java.util.Arrays;
 import java.util.Base64;
 
 public class Networking{
@@ -25,14 +25,14 @@ public class Networking{
             while (true) {
                 //Creates a socket to send and receive messages and blocks any other activity
                 //while waiting for a connection
-                Socket IO = serverSocket.accept();
+                Socket io = serverSocket.accept();
                 //Attach a reader stream to the socket
                 ObjectInputStream Input = new ObjectInputStream(
-                        IO.getInputStream());
+                        io.getInputStream());
                 //Attach a writer stream to the socket which
                 //auto-flushes (automatically sends data back)
                 ObjectOutputStream Output = new ObjectOutputStream(
-                        IO.getOutputStream());
+                        io.getOutputStream());
                 //Clears out the initial garbage stored in the output of the client socket
                 Input.readObject();
 
@@ -41,13 +41,45 @@ public class Networking{
                     //Generate a secret session key using Diffie-Hellman
                     byte[] SessionKey = Cryptography.DiffieHellman(Input, Output);
                     //Hash the session key to make it a reasonable size
-                    byte[] SmallSessionKey = Cryptography.SHA1Hash(SessionKey);
-                    Cryptography.DESEncrypt(SmallSessionKey, Output);
+                    byte[] SmallSessionKey = Cryptography.SHAHash(SessionKey);
+                    String AlgorithmChoice = (String)Input.readObject();
+                    switch(AlgorithmChoice){
+                        case "1":
+                            SecretKey DESKey = Cryptography.DESKeyGen(SmallSessionKey);
+                            Cipher des = Cipher.getInstance("DES/CBC/PKCS5Padding");
+                            //Gets the IV and IV length
+                            byte[] IV = (byte[]) Input.readObject();
+                            //Creates the IV parameter spec and re-initializes the cipher
+                            IvParameterSpec ivps = new IvParameterSpec(IV);
+                            des.init(Cipher.DECRYPT_MODE, DESKey, ivps);
+                            ReceiveFile(Input, des);
+                            des.init(Cipher.ENCRYPT_MODE, DESKey);
+                            SendFile(des, Output);
+                        case "2":
+                            SecretKeySpec BlowfishKey =
+                                    Cryptography.BlowfishKeyGen(SmallSessionKey);
+                            Cipher Blowfish = Cipher.getInstance("Blowfish/CBC/PKCS5Padding");
+                            IV = (byte[]) Input.readObject();
+                            ivps = new IvParameterSpec(IV);
+                            Blowfish.init(Cipher.DECRYPT_MODE, BlowfishKey, ivps);
+                            ReceiveFile(Input, Blowfish);
+                            Blowfish.init(Cipher.ENCRYPT_MODE, BlowfishKey);
+                            SendFile(Blowfish, Output);
+                        case "3":
+                            SecretKey DESedeKey = Cryptography.DESedeKeyGen(SmallSessionKey);
+                            Cipher DESede = Cipher.getInstance("DESede/CBC/PKCS5Padding");
+                            IV = (byte[]) Input.readObject();
+                            ivps = new IvParameterSpec(IV);
+                            DESede.init(Cipher.DECRYPT_MODE, DESedeKey, ivps);
+                            ReceiveFile(Input, DESede);
+                            DESede.init(Cipher.ENCRYPT_MODE, DESedeKey);
+                            SendFile(DESede, Output);
+                    }
                 }
                 //Close the reader, writer, and socket.
                 Input.close();
                 Output.close();
-                IO.close();
+                io.close();
             }
         } catch (IOException | ClassNotFoundException | InvalidKeySpecException |
                 NoSuchAlgorithmException | InvalidAlgorithmParameterException | InvalidKeyException |
@@ -55,6 +87,14 @@ public class Networking{
             e.printStackTrace();
         }
     }
+    /*
+    Name: VerifyUser
+    Purpose: Verifies a user's account
+    Author: Samuel McManus
+    Uses: Verification.Register, Verification.Login
+    Used By: Main
+    Date: September 14, 2020
+     */
     static boolean VerifyUser(ObjectInputStream Input, ObjectOutputStream Output) throws IOException,
             ClassNotFoundException, InvalidKeySpecException, NoSuchAlgorithmException {
         //Takes user credentials
@@ -88,5 +128,48 @@ public class Networking{
                 return true;
             }
         }
+    }
+    /*
+    Name: SendFile
+    Purpose: Send a file to the client
+    Author: Samuel McManus
+    Parameter MyCipher: The cipher used to encrypt the message
+    Parameter Output: The output socket
+    Uses: Cryptography.Encrypt
+    Used By: Connect
+    Date: September 22, 2020
+     */
+    public static void SendFile(Cipher MyCipher, ObjectOutputStream Output) throws
+            IOException, IllegalBlockSizeException, BadPaddingException {
+        //Read the plaintext of the file
+        IO.ReadPlaintext();
+        //Encrypt the file using the DES method
+        Cryptography.Encrypt(MyCipher, Output);
+    }
+    /*
+    Name: ReceiveFile
+    Purpose: Receive a file from the client
+    Author: Samuel McManus
+    Parameter MyCipher: The cipher used to encrypt the message
+    Parameter Input: The input socket used to communicate with the server
+    Uses: Cryptography.Decrypt
+    Used By: Connect
+    Date: September 22, 2020
+     */
+    public static void ReceiveFile(ObjectInputStream Input, Cipher MyCipher) throws
+            IOException, ClassNotFoundException, IllegalBlockSizeException, BadPaddingException {
+        //Gets the cipher text from the server
+        ByteArrayOutputStream bo = new ByteArrayOutputStream();
+        while(true){
+            byte[] TempCipher = (byte[]) Input.readObject();
+            if(Arrays.equals(TempCipher, "finished".getBytes()))
+                break;
+            bo.writeBytes(TempCipher);
+        }
+        //Converts the cipher text to an array of bytes
+        byte[] CipherText = bo.toByteArray();
+        System.out.println("\nCiphertext received from client:");
+        System.out.println(new String(CipherText));
+        Cryptography.Decrypt(MyCipher, CipherText);
     }
 }

@@ -1,5 +1,8 @@
 import javax.crypto.*;
 import javax.crypto.spec.DESKeySpec;
+import javax.crypto.spec.DESedeKeySpec;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
@@ -72,9 +75,9 @@ public class Cryptography {
     Used By: Listen
     Date: September 18, 2020
      */
-    public static byte[] SHA1Hash(byte[] DHBytes) throws NoSuchAlgorithmException {
+    public static byte[] SHAHash(byte[] DHBytes) throws NoSuchAlgorithmException {
         //Creates an instance of the sha-1 message digest
-        MessageDigest Sha = MessageDigest.getInstance("SHA");
+        MessageDigest Sha = MessageDigest.getInstance("SHA-256");
         //Feeds the input to the Sha algorithm and returns the digest
         Sha.update(DHBytes);
         return Sha.digest();
@@ -97,23 +100,54 @@ public class Cryptography {
         SecretKeyFactory KeyFactory = SecretKeyFactory.getInstance("DES");
         return KeyFactory.generateSecret(desKeySpec);
     }
-    public static void DESEncrypt(byte[] SessionBytes, ObjectOutputStream Output) throws NoSuchPaddingException,
-            NoSuchAlgorithmException, InvalidKeyException, InvalidKeySpecException, IOException,
-            BadPaddingException, IllegalBlockSizeException {
+    /*
+    Name: BlowfishKeyGen
+    Purpose: Generate a Blowfish key spec
+    Author: Doctor Burris
+    Parameter Password: A hash of the session key received from the diffie-hellman algorithm
+    Return: The blowfish secret key spec
+    Uses: N/A
+    Used By: Connect
+    Date: September 22, 2020
+    */
+    public static SecretKeySpec BlowfishKeyGen(byte[] Password){
+        return new SecretKeySpec(Password, "Blowfish");
+    }
+    /*
+    Name: DESedeKeyGen
+    Purpose: Generate a 3DES key
+    Author: Doctor Burris
+    Parameter Password: A hash of the session key received from the diffie-hellman algorithm
+    Return: The 3DES key
+    Uses: N/A
+    Used By: Listen
+    Date: September 22, 2020
+     */
+    public static SecretKey DESedeKeyGen(byte[] Password) throws InvalidKeyException, NoSuchAlgorithmException, InvalidKeySpecException {
+        DESedeKeySpec DESKeySpec = new DESedeKeySpec(Password);
+        SecretKeyFactory KeyFactory = SecretKeyFactory.getInstance("DESede");
+        return KeyFactory.generateSecret(DESKeySpec);
+    }
+    /*
+       Name: Encrypt
+       Purpose: Encrypt a plaintext
+       Author: Doctor Burris and Samuel McManus
+       Parameter SessionBytes: A hash of the session key
+       Parameter Output: The socket used to output data
+       Uses: DESKeyGen
+       Used By: Listen
+       Date: September 21, 2020
+        */
+    public static void Encrypt(Cipher MyCipher, ObjectOutputStream Output) throws
+            IOException, BadPaddingException, IllegalBlockSizeException {
         //Initializes a file input stream
         FileInputStream fin = new FileInputStream("ServerFile.txt");
-        //Gets a DES secret key
-        SecretKey DESKey = DESKeyGen(SessionBytes);
-        //Gets an instance of the cipher class using the DES algorithm  in encrypt mode
-        Cipher des = Cipher.getInstance("DES/CBC/PKCS5Padding");
-        des.init(Cipher.ENCRYPT_MODE, DESKey);
         //Writes out the initialization vector and the length of the initialization vector
-        byte[] iv = des.getIV();
-        Output.writeObject(iv.length);
-        Output.flush();
+        byte[] iv = MyCipher.getIV();
         Output.writeObject(iv);
         Output.flush();
 
+        System.out.println("\nMy encrypted ciphertext");
         //Writes in 128 byte blocks
         byte[] Input = new byte[128];
         //Infinitely loops reading 128 bytes from the file, encrypting those bytes,
@@ -122,19 +156,45 @@ public class Cryptography {
             int BytesRead = fin.read(Input);
             if(BytesRead == -1)
                 break;
-            byte[] OutputBytes = des.update(Input, 0, BytesRead);
+            byte[] OutputBytes = MyCipher.update(Input, 0, BytesRead);
             if(OutputBytes != null) {
-                System.out.print(Base64.getEncoder().encodeToString(OutputBytes));
+                System.out.print(new String(OutputBytes));
                 Output.writeObject(OutputBytes);
             }
         }
         //Write the final bytes to the output stream and close the file.
-        byte[] OutputBytes = des.doFinal();
+        byte[] OutputBytes = MyCipher.doFinal();
         if(OutputBytes != null) {
-            System.out.println(Base64.getEncoder().encodeToString(OutputBytes));
+            System.out.println(new String(OutputBytes));
             Output.writeObject(OutputBytes);
         }
         fin.close();
         Output.flush();
+        //Because the output will be too long to flush all at once, finish by writing the bytes
+        //for the word "finished"
+        Output.writeObject("finished".getBytes());
+        Output.flush();
+    }
+    /*
+    Name: Decrypt
+    Purpose: Decrypt a ciphertext
+    Author: Doctor Burris and Samuel McManus
+    Parameter SessionBytes: A hash of the session key
+    Parameter IV: The initialization vector
+    Parameter CipherText: The ciphertext from the user
+    Uses: DESKeyGen
+    Used By: Connect
+    Date: September 21, 2020
+     */
+    public static void Decrypt(Cipher MyCipher, byte[] CipherText) throws
+            BadPaddingException, IllegalBlockSizeException {
+        String Plaintext = "";
+        //Write the final bytes to the output stream and close the file.
+        byte[] OutputBytes = MyCipher.doFinal(CipherText);
+        if(OutputBytes != null)
+            Plaintext = new String(OutputBytes);
+        //Reads out the decrypted plaintext to the terminal
+        System.out.println("\nDecrypted plaintext:");
+        System.out.println(Plaintext);
     }
 }

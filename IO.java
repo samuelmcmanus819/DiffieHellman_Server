@@ -73,4 +73,26 @@ public class IO {
         FileWriter.append(Username + ", " + PasswordHash + ", " + Salt + "\n");
         FileWriter.close();
     }
+    /*
+    Name: ReadPlaintext
+    Purpose: Reads the plaintext of the file being sent to the terminal
+    Author: Samuel McManus
+    Uses: N/A
+    Used By: Networking.SendFile
+    Date: September 22, 2020
+     */
+    static void ReadPlaintext() throws IOException {
+        System.out.println("\nMy file's plaintext:");
+        File CredentialFile = new File("ServerFile.txt");
+        BufferedReader FileReader = new BufferedReader(new FileReader(CredentialFile));
+
+        //Loops through the whole file looking to see if the username already exists. If so,
+        //return the user's credentials.
+        String FileLine;
+        while((FileLine = FileReader.readLine())!= null){
+            System.out.println(FileLine);
+            }
+        //If the user doesn't exist, return nothing.
+        FileReader.close();
+    }
 }
