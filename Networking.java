@@ -8,8 +8,18 @@ import java.security.*;
 import java.security.spec.InvalidKeySpecException;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.concurrent.Semaphore;
 
-public class Networking{
+public class Networking extends Thread{
+    private Socket io;
+    private int CountClients;
+    private Semaphore Sema;
+
+    public Networking(Socket i, int c, Semaphore Sema){
+        io = i;
+        CountClients = c;
+        this.Sema = Sema;
+    }
     /*
     Name: Listen
     Purpose: Listens for connecting users
@@ -18,14 +28,8 @@ public class Networking{
     Used By: Main
     Date: September 14, 2020
      */
-    static void Listen() {
+    public void run(){
         try {
-            //Creates a server socket listening on port 6622 with a queue of 8
-            ServerSocket serverSocket = new ServerSocket(6622, 8);
-            while (true) {
-                //Creates a socket to send and receive messages and blocks any other activity
-                //while waiting for a connection
-                Socket io = serverSocket.accept();
                 //Attach a reader stream to the socket
                 ObjectInputStream Input = new ObjectInputStream(
                         io.getInputStream());
@@ -35,9 +39,9 @@ public class Networking{
                         io.getOutputStream());
                 //Clears out the initial garbage stored in the output of the client socket
                 Input.readObject();
-
+                boolean Verified = VerifyUser(Input, Output, this.Sema);
                 //If the user successfully verified their account, then start the rest of the program
-                if(VerifyUser(Input, Output)){
+                if(Verified){
                     //Generate a secret session key using Diffie-Hellman
                     byte[] SessionKey = Cryptography.DiffieHellman(Input, Output);
                     //Hash the session key to make it a reasonable size
@@ -54,7 +58,9 @@ public class Networking{
                             des.init(Cipher.DECRYPT_MODE, DESKey, ivps);
                             ReceiveFile(Input, des);
                             des.init(Cipher.ENCRYPT_MODE, DESKey);
+                            Sema.acquire();
                             SendFile(des, Output);
+                            Sema.release();
                         case "2":
                             SecretKeySpec BlowfishKey =
                                     Cryptography.BlowfishKeyGen(SmallSessionKey);
@@ -64,7 +70,9 @@ public class Networking{
                             Blowfish.init(Cipher.DECRYPT_MODE, BlowfishKey, ivps);
                             ReceiveFile(Input, Blowfish);
                             Blowfish.init(Cipher.ENCRYPT_MODE, BlowfishKey);
+                            Sema.acquire();
                             SendFile(Blowfish, Output);
+                            Sema.release();
                         case "3":
                             SecretKey DESedeKey = Cryptography.DESedeKeyGen(SmallSessionKey);
                             Cipher DESede = Cipher.getInstance("DESede/CBC/PKCS5Padding");
@@ -73,18 +81,35 @@ public class Networking{
                             DESede.init(Cipher.DECRYPT_MODE, DESedeKey, ivps);
                             ReceiveFile(Input, DESede);
                             DESede.init(Cipher.ENCRYPT_MODE, DESedeKey);
+                            Sema.acquire();
                             SendFile(DESede, Output);
+                            Sema.release();
                     }
                 }
                 //Close the reader, writer, and socket.
                 Input.close();
                 Output.close();
                 io.close();
-            }
-        } catch (IOException | ClassNotFoundException | InvalidKeySpecException |
-                NoSuchAlgorithmException | InvalidAlgorithmParameterException | InvalidKeyException |
-                NoSuchPaddingException | IllegalBlockSizeException | BadPaddingException e) {
-            e.printStackTrace();
+            } catch (InvalidKeySpecException invalidKeySpecException) {
+            invalidKeySpecException.printStackTrace();
+        } catch (ClassNotFoundException classNotFoundException) {
+            classNotFoundException.printStackTrace();
+        } catch (NoSuchAlgorithmException noSuchAlgorithmException) {
+            noSuchAlgorithmException.printStackTrace();
+        } catch (BadPaddingException badPaddingException) {
+            badPaddingException.printStackTrace();
+        } catch (InvalidKeyException invalidKeyException) {
+            invalidKeyException.printStackTrace();
+        } catch (InvalidAlgorithmParameterException invalidAlgorithmParameterException) {
+            invalidAlgorithmParameterException.printStackTrace();
+        } catch (NoSuchPaddingException noSuchPaddingException) {
+            noSuchPaddingException.printStackTrace();
+        } catch (IOException ioException) {
+            ioException.printStackTrace();
+        } catch (IllegalBlockSizeException illegalBlockSizeException) {
+            illegalBlockSizeException.printStackTrace();
+        } catch (InterruptedException interruptedException) {
+            interruptedException.printStackTrace();
         }
     }
     /*
@@ -95,15 +120,16 @@ public class Networking{
     Used By: Main
     Date: September 14, 2020
      */
-    static boolean VerifyUser(ObjectInputStream Input, ObjectOutputStream Output) throws IOException,
-            ClassNotFoundException, InvalidKeySpecException, NoSuchAlgorithmException {
+    static boolean VerifyUser(ObjectInputStream Input, ObjectOutputStream Output,
+                              Semaphore Sema) throws IOException, ClassNotFoundException,
+            InvalidKeySpecException, NoSuchAlgorithmException, InterruptedException {
         //Takes user credentials
         String UserInput = (String)Input.readObject();
         String[] UserCredentials = UserInput.split(", ");
         //Registers a new user
         if(UserCredentials[2].trim().equalsIgnoreCase("New")) {
             //If the following returns false, then the username is unavailable
-            if (!Verification.Register(UserCredentials[0], UserCredentials[1])) {
+            if (!Verification.Register(UserCredentials[0], UserCredentials[1], Sema)) {
                 Output.writeObject("Username not available\n");
             } else {
                 Output.writeObject("Success! Next please log in\n");
@@ -115,7 +141,7 @@ public class Networking{
         else {
             //If the user's input credentials don't match the actuals, tell the user
             //they messed up and return false
-            if(!Verification.Login(UserCredentials[0], UserCredentials[1])){
+            if(!Verification.Login(UserCredentials[0], UserCredentials[1], Sema)){
                 Output.writeObject("Invalid username or password");
                 Output.flush();
                 return false;
@@ -140,7 +166,8 @@ public class Networking{
     Date: September 22, 2020
      */
     public static void SendFile(Cipher MyCipher, ObjectOutputStream Output) throws
-            IOException, IllegalBlockSizeException, BadPaddingException {
+            IOException, IllegalBlockSizeException, BadPaddingException,
+            InterruptedException {
         //Read the plaintext of the file
         IO.ReadPlaintext();
         //Encrypt the file using the DES method

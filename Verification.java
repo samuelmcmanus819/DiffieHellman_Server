@@ -5,6 +5,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.spec.InvalidKeySpecException;
 import java.util.Base64;
+import java.util.concurrent.Semaphore;
 
 public class Verification {
     /*
@@ -16,10 +17,14 @@ public class Verification {
     Used By: Listen
     Date: September 15, 2020
      */
-    static boolean Register(String Username, String Password) throws IOException, InvalidKeySpecException, NoSuchAlgorithmException {
+    static boolean Register(String Username, String Password, Semaphore Sema) throws
+            IOException, InvalidKeySpecException, NoSuchAlgorithmException, InterruptedException {
+        Sema.acquire();
         //If the username already exists, return false
-        if(IO.SearchForUser(Username))
+        if(IO.SearchForUser(Username)){
+            Sema.release();
             return false;
+        }
         //Otherwise insert the user into the file
         else {
             //First compute a salt
@@ -27,6 +32,7 @@ public class Verification {
             //Hash the password with the computed salt.
             String PasswordHash = HashPassword(Password, Salt);
             IO.WriteNewUser(Username, PasswordHash, Base64.getEncoder().encodeToString(Salt));
+            Sema.release();
             return true;
         }
     }
@@ -39,8 +45,11 @@ public class Verification {
     Used By: Listen
     Date: September 15, 2020
      */
-    static boolean Login(String Username, String Password) throws IOException, InvalidKeySpecException, NoSuchAlgorithmException {
+    static boolean Login(String Username, String Password, Semaphore Sema)
+            throws IOException, InvalidKeySpecException, NoSuchAlgorithmException, InterruptedException {
+        Sema.acquire();
         String[] UserCreds = IO.GetUser(Username);
+        Sema.release();
         if(!UserCreds[0].equals("") &&
                 (HashPassword(Password, Base64.getDecoder().decode(UserCreds[2])).equals(UserCreds[1]))){
                return true;
